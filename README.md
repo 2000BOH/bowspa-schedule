@@ -7,11 +7,12 @@ GitHub, Vercel, Turso 연결을 확인하기 위한 시작 프로젝트입니다
 - `index.html`: 배포 상태 페이지
 - `api/health.js`: 서버에서 Turso의 `schedules` 테이블에 읽기 쿼리를 보내는 상태 검사. 일정 행이나 토큰은 응답하지 않습니다.
 - `package.json`: Turso libSQL 클라이언트 의존성
+- `.gitignore`: 로컬 비밀 파일과 의존성 폴더가 Git에 올라가지 않도록 제외
 
 ## Vercel 설정
 
 1. GitHub 저장소 `2000BOH/bowspa-schedule`을 Vercel 프로젝트로 가져옵니다. Framework Preset은 `Other`, Root Directory는 `.`입니다.
-2. 프로젝트의 Environment Variables에 아래 두 값을 Production, Preview, Development 대상으로 등록합니다.
+2. 프로젝트의 Environment Variables에 아래 두 값을 Production과 Preview 대상으로 등록합니다.
    - `TURSO_DATABASE_URL` = `libsql://bowspa-schedule-2000boh.aws-ap-northeast-1.turso.io`
    - `TURSO_AUTH_TOKEN` = Turso에서 해당 DB에 발급한 **읽기 전용** 토큰 (GitHub에 커밋하지 말 것)
 3. 배포 후 `/api/health`가 HTTP 200 및 `status: connected`를 반환하고 홈 화면에 'Turso 데이터베이스 연결 정상'이 보이면 연결 성공입니다.
