@@ -1,9 +1,8 @@
 {
   "name": "bowspa-schedule",
-  "version": "0.1.0",
   "private": true,
   "type": "module",
   "dependencies": {
-    "@libsql/client": "^0.15.0"
+    "@libsql/client": "^0.18.0"
   }
 }
