@@ -1,0 +1,15 @@
+{
+  "rewrites": [
+    {
+      "source": "/schedule",
+      "destination": "/index.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/schedule",
+      "statusCode": 308
+    }
+  ]
+}
