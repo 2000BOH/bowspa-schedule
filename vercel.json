@@ -1,1 +1,24 @@
-{"rewrites": [{"source": "/schedule", "destination": "/index.html"}, {"source": "/spa-guard", "destination": "https://spa-guard.vercel.app/spa-guard"}, {"source": "/spa-guard/:path*", "destination": "https://spa-guard.vercel.app/spa-guard/:path*"}], "redirects": [{"source": "/", "destination": "/schedule", "statusCode": 308}]}
+{
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/schedule",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/spa-guard",
+      "destination": "https://spa-guard.vercel.app/spa-guard"
+    },
+    {
+      "source": "/spa-guard/:path*",
+      "destination": "https://spa-guard.vercel.app/spa-guard/:path*"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/schedule",
+      "statusCode": 308
+    }
+  ]
+}
