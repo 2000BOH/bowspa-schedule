@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>주간 근무 스케줄표</title>
+<style>
+:root{
+  --am:#FFE08A;      --am-d:#E8A317;  --am-t:#6B4300;  --am-f:#C07C05;
+  --pm:#A8D5FF;      --pm-d:#2E8BD4;  --pm-t:#0A4370;  --pm-f:#1C6FAE;
+  --ni:#C9BDF5;      --ni-d:#6D53D6;  --ni-t:#33217A;  --ni-f:#5B3FC9;
+  --lunch:#FFB86B;   --lunch-d:#D98430; --lunch-t:#5E2F00;
+  --dinner:#8DDCA9;  --dinner-d:#3FA96A; --dinner-t:#0D4A24;
+  --other:#D6DDE6;   --other-d:#94A3B2; --other-t:#2C3742;
+  --line:#2b2b2b;    --line2:#9aa3ad;
+  --ink:#141414;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#6b7280;font-family:"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",sans-serif;color:var(--ink);
+  -webkit-print-color-adjust:exact;print-color-adjust:exact}
+button,select{font-family:inherit;color:inherit}
+body.dragging{cursor:ew-resize;user-select:none}
+
+/* ===== 상단 조작 바 (인쇄 제외) ===== */
+.bar-top{position:sticky;top:0;z-index:50;background:#1f2937;color:#fff;padding:8px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bar-top b{font-size:13px;margin-right:6px}
+.bar-top button{background:#374151;border:1px solid #4b5563;color:#fff;border-radius:6px;padding:6px 12px;font-size:12px;cursor:pointer}
+.bar-top button:hover{background:#4b5563}
+.bar-top button.primary{background:#2563eb;border-color:#2563eb}
+.bar-top button.primary:hover{background:#1d4ed8}
+.bar-top .sp{flex:1}
+.sync{font-size:11px;color:#9ca3af;margin-left:4px}
+.sync.ok{color:#6ee7b7} .sync.saving{color:#fcd34d} .sync.loading{color:#93c5fd} .sync.offline{color:#fca5a5}
+.hint{font-size:11px;color:#cbd5e1;line-height:1.5}
+
+.wrap{padding:14px;overflow:auto}
+
+/* ===== 용지 ===== */
+.sheet{width:283mm;background:#fff;padding:0;margin:0 auto;box-shadow:0 6px 24px rgba(0,0,0,.35)}
+.sheet+.sheet{margin-top:14px}
+
+/* ===== 헤더 ===== */
+.hd{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:2.2px solid var(--line);padding:1.8mm 3mm}
+.hd .ttl{font-size:15pt;font-weight:800;letter-spacing:-.5px}
+.hd .sub{font-size:7.5pt;color:#555;margin-top:.6mm}
+.names{display:flex;gap:4px}
+.ntab{border:1.6px solid var(--line2);background:#f3f4f6;border-radius:5px;padding:1.6mm 4mm;font-size:10.5pt;font-weight:700;cursor:pointer;white-space:nowrap}
+.ntab .pos{font-size:8pt;font-weight:600;color:#555;margin-left:3px}
+.ntab.on{background:#111827;border-color:#111827;color:#fff}
+.ntab.on .pos{color:#d1d5db}
+.wk{justify-self:end;text-align:right}
+.wk select{font-size:11pt;font-weight:700;border:1.4px solid var(--line2);border-radius:5px;padding:1.2mm 2mm;background:#fff}
+.wk .range{font-size:9.5pt;font-weight:700;margin-top:1.2mm;color:#111}
+
+/* ===== 표 공통 ===== */
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+th,td{border:1.1px solid var(--line2);text-align:center;vertical-align:middle}
+thead th{background:#eef1f4;font-size:8.5pt;font-weight:700;height:6.2mm;border-color:var(--line2)}
+.sec{font-size:8.5pt;font-weight:800;background:#111827;color:#fff;text-align:left;padding:1mm 3mm;letter-spacing:1px}
+
+/* ===== 근무표 ===== */
+.work td{height:12.8mm}
+.dcell{font-size:10pt;font-weight:800;background:#f8fafc}
+.dcell .dt{display:block;font-size:8pt;font-weight:600;color:#555}
+.dcell.sat{color:#1d4ed8} .dcell.sun{color:#c1121f}
+.dcell .hol{color:#c1121f;font-weight:800}
+.pcell{cursor:pointer;background:#fff;user-select:none;padding:0}
+.pcell:hover{background:#f1f5f9}
+.pcell .cap{display:block;font-size:5.5pt;font-weight:700;color:#6b7280;letter-spacing:.5px;line-height:1}
+.pcell .hr{display:block;font-size:13pt;font-weight:900;line-height:1.05}
+.pcell .hr.sm{font-size:10pt}
+.pcell .dot{font-size:11pt;font-weight:800;color:#c2c8cf}
+.pcell .more{position:absolute;right:.4mm;top:.2mm;font-size:5.5pt;font-weight:800;color:#6b7280}
+.pcell{position:relative}
+/* 배경 없이 글자색만으로 구분 */
+.pcell.on.am    .hr{color:var(--am-f)}  .pcell.on.am    .cap{color:var(--am-f);opacity:.9}
+.pcell.on.pm    .hr{color:var(--pm-f)}  .pcell.on.pm    .cap{color:var(--pm-f);opacity:.9}
+.pcell.on.night .hr{color:var(--ni-f)}  .pcell.on.night .cap{color:var(--ni-f);opacity:.9}
+
+/* ===== 타임라인 ===== */
+.axis{display:flex;font-size:5.5pt;font-weight:600;color:#6b7280}
+.axis div{flex:1;text-align:center;border-left:1px solid #d7dde3;line-height:1.1}
+.axis div.k{color:#111;font-weight:800;border-left:1.4px solid #98a2ad}
+.axis div.nd{background:#eceff2}
+.tl{position:relative;padding:0;cursor:crosshair}
+.track,.mark,.night-zone{pointer-events:none}
+.track{position:absolute;inset:0;background:repeating-linear-gradient(to right,#edf0f3 0 1px,transparent 1px calc(100%/24))}
+.night-zone{position:absolute;top:0;bottom:0;background:rgba(17,24,39,.045)}
+.mark{position:absolute;top:0;bottom:0;width:0;border-left:1.2px dashed #b0b8c1}
+.mark.mid{border-left:1.4px dashed #6b7280}
+.bar{position:absolute;top:2.2mm;height:8mm;border-radius:3px;display:flex;align-items:flex-start;justify-content:space-between;
+  padding:.35mm 1.2mm 0;font-size:7.5pt;font-weight:800;border:1.4px solid;overflow:hidden;white-space:nowrap;cursor:grab}
+.bar.am{background:var(--am);border-color:var(--am-d);color:var(--am-t)}
+.bar.pm{background:var(--pm);border-color:var(--pm-d);color:var(--pm-t)}
+.bar.night{background:var(--ni);border-color:var(--ni-d);color:var(--ni-t)}
+.bar .bd{opacity:.75;font-size:6.5pt}
+.bar.spill{opacity:.62;border-style:dashed;pointer-events:none;
+  background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.55) 0 2px,transparent 2px 5px)}
+.ov{position:absolute;right:-3.4mm;top:3.4mm;font-size:8pt;font-weight:800;color:#555;pointer-events:none}
+/* 드래그 손잡이 */
+.hs{position:absolute;top:0;bottom:0;width:2.2mm;cursor:ew-resize;z-index:5}
+.h-s{left:0} .h-e{right:0}
+.bar:hover .hs{background:rgba(0,0,0,.16)}
+/* 근무 막대 안쪽 지원업무 띠 */
+.sband{position:absolute;left:0;right:0;bottom:.4mm;height:4.4mm;pointer-events:none}
+.sin{position:absolute;border-radius:2px;border:1px solid;display:flex;align-items:center;justify-content:center;
+  font-weight:800;overflow:hidden;white-space:nowrap;padding:0 .4mm;letter-spacing:-.2px}
+.sin.lunch{background:var(--lunch);border-color:var(--lunch-d);color:var(--lunch-t)}
+.sin.dinner{background:var(--dinner);border-color:var(--dinner-d);color:var(--dinner-t)}
+.sin.other{background:var(--other);border-color:var(--other-d);color:var(--other-t)}
+/* 근무시간 밖으로 벗어난 지원업무(점선) */
+.sout{position:absolute;top:5.4mm;height:4.4mm;border:1.1px dashed;border-radius:2px;background:rgba(255,255,255,.82);
+  display:flex;align-items:center;justify-content:center;font-weight:800;overflow:hidden;white-space:nowrap;padding:0 .4mm;letter-spacing:-.2px;pointer-events:none}
+.sout.lunch{border-color:var(--lunch-d);color:var(--lunch-t)}
+.sout.dinner{border-color:var(--dinner-d);color:var(--dinner-t)}
+.sout.other{border-color:var(--other-d);color:var(--other-t)}
+.hsum{font-size:8.5pt;font-weight:800;background:#f8fafc}
+.hsum.z{color:#c2c8cf}
+tfoot td{background:#eef1f4;font-size:9pt;font-weight:800;height:6.2mm}
+
+/* ===== 지원업무 ===== */
+.sup td{height:13.6mm;padding:0}
+.sup .rl{font-size:10.5pt;font-weight:800;background:#f8fafc}
+.sup thead th{white-space:nowrap;overflow:hidden}
+.sup thead th .hol{color:#c1121f;font-weight:700;font-size:7pt}
+.scell{position:relative}
+.split{display:flex;height:100%}
+/* 점심·저녁·기타 세 칸을 각각 켜고 끕니다. 켜진 칸이 넓어지고, 인쇄하면 꺼진 칸은 사라집니다. */
+.slot{flex:1 1 0;min-width:0;border:0;border-right:1px dashed #c6ccd3;background:#fff;cursor:pointer;overflow:hidden;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3mm;
+  font-size:8.5pt;font-weight:700;color:#98a1ab;transition:flex-grow .12s}
+.slot:last-child{border-right:0}
+.slot:hover{background:#f1f5f9;color:#111}
+.slot.on{flex-grow:3;font-size:13pt;font-weight:900;letter-spacing:1px}
+.slot.lunch.on{background:var(--lunch);color:var(--lunch-t);box-shadow:inset 0 0 0 1.6px var(--lunch-d)}
+.slot.dinner.on{background:var(--dinner);color:var(--dinner-t);box-shadow:inset 0 0 0 1.6px var(--dinner-d)}
+.slot.other.on{background:var(--other);color:var(--other-t);box-shadow:inset 0 0 0 1.6px var(--other-d);
+  flex-grow:4.5;font-size:9pt;letter-spacing:0}
+.slot .tag{font-size:7pt;font-weight:800;letter-spacing:2px;opacity:.7}
+.slot .tm{font-size:9pt;font-weight:900;white-space:nowrap;letter-spacing:-.3px}
+.slot .tm2{font-size:6.5pt;font-weight:700;letter-spacing:0;opacity:.85;white-space:nowrap;margin-top:-.3mm}
+.slot .u{font-size:6.5pt;font-weight:700}
+.slot .tm b{border-bottom:1px dotted currentColor;padding:0 .2mm}
+.slot .tm b:hover{background:rgba(0,0,0,.14)}
+
+/* ===== 푸터 ===== */
+.ft{display:flex;align-items:center;gap:4mm;padding:1.6mm 3mm;border-top:2.2px solid var(--line)}
+.lg{display:flex;gap:3mm;flex-wrap:wrap;font-size:8pt;font-weight:700;align-items:center}
+.lg i{display:inline-block;width:4mm;height:3mm;border:1.2px solid #555;border-radius:2px;margin-right:1.2mm;vertical-align:-.4mm}
+.lg .div{color:#9aa3ad}
+.lg .note{font-size:7pt;font-weight:600;color:#555}
+.sign{margin-left:auto;display:flex;gap:2mm;font-size:8.5pt;font-weight:700}
+.sign span{border:1.1px solid var(--line2);padding:1.2mm 6mm 1.2mm 2mm;border-radius:3px}
+
+/* ===== 인쇄 ===== */
+#printAll{display:none}
+@page{size:A4 landscape;margin:5mm}
+@media print{
+  html,body{background:#fff}
+  .noprint{display:none!important}
+  .wrap{padding:0;overflow:visible}
+  .sheet{box-shadow:none;width:auto;margin:0}
+  .ntab:not(.on){display:none}
+  .ntab.on{background:#fff;color:#111;border:0;padding:0 2mm;font-size:13pt}
+  .ntab.on .pos{color:#333;font-size:10pt}
+  .wk select{border:0;background:none;-webkit-appearance:none;appearance:none;padding:0 1mm;font-size:11pt}
+  .slot:not(.on){flex:0 0 0;width:0;padding:0;border:0;visibility:hidden}
+  .slot .tm b{border-bottom:0}
+  .hs{display:none}
+  .tl{cursor:auto}
+  body.printall #live{display:none}
+  body.printall #printAll{display:block}
+  #printAll .sheet{page-break-after:always}
+  #printAll .sheet:last-child{page-break-after:auto}
+}
+</style>
+</head>
+<body>
+
+<div class="bar-top noprint">
+  <b>주간 근무 스케줄표</b>
+  <button class="primary" onclick="printOne()">🖨 이 사람 1장</button>
+  <button onclick="printAll()" id="btnAll">🖨 전체</button>
+  <button onclick="printBlank()">🖨 빈 양식</button>
+  <button onclick="printPDF()" title="세로 A4에 90도 돌려서 저장합니다. 인쇄창에서 대상을 'PDF로 저장'으로 선택하세요">📄 PDF로 저장 (세로)</button>
+  <span id="sync" class="sync"></span>
+  <span class="sp"></span>
+  <button onclick="resetPerson()">이 사람 초기화</button>
+  <button onclick="resetWeek()">이 주 전체 초기화</button>
+</div>
+
+<div class="wrap">
+  <div id="live"><div class="sheet" id="sheet"></div></div>
+  <div id="printAll"></div>
+</div>
+
+<script>
+/* ========== 상수 ========== */
+const PEOPLE = [
+  {id:'lee',  name:'이수용', pos:'이사'},
+  {id:'hong', name:'홍성현', pos:'본부장'},
+  {id:'han',  name:'한연수', pos:'팀장'},
+  {id:'kim',  name:'김성민', pos:'주임'}
+];
+const DAYS = ['월','화','수','목','금','토','일'];
+
+/* 타임라인 축 : 04:00 → 익일 03:59 (24시간). 한 행 = 하루.
+   축 끝(익일 04:00)을 넘어가는 근무·지원업무는 다음날 행 앞머리에 이어서 그립니다. */
+const AX_START_H = 4, AX_HOURS = 24, AX_MIN = AX_HOURS*60;
+const MIDNIGHT = (24-AX_START_H)*60;     // 자정 위치
+const MAX_END  = AX_MIN + 12*60;         // 다음날로 최대 12시간까지 연장 허용
+const SNAP    = 30;      // 드래그 스냅 (분)
+const DEF_DUR = 9*60;    // 새 근무 기본 길이 (분) — 휴게 포함
+const MIN_DUR = 60;      // 최소 근무 길이 (분)
+
+/* 출근시간 롤링 순서 (셀 클릭) */
+const SEQ = {
+  am:    [9,10,11,4,5,6,7,8],
+  pm:    [12,13,14,15,16,17,18,19,20],
+  night: [21,22,23,0,1,2,3]
+};
+const PERIODS = [{id:'am',label:'오전'},{id:'pm',label:'오후'},{id:'night',label:'야간'}];
+
+/* 지원업무 행 / 구분 */
+const SUP_ROWS  = [{id:'reception',label:'리셉션',s:'리'},{id:'snack',label:'스낵',s:'스'},{id:'etcrow',label:'기타',s:'기'}];
+const SUP_TYPES = [{id:'lunch',label:'점심'},{id:'dinner',label:'저녁'},{id:'other',label:'기타'}];
+const TYPE_LABEL = {lunch:'점심', dinner:'저녁', other:'기타'};
+/* 점심·저녁은 1시간 고정(시간 조절 불가). 기타만 셀에서 시간을 바꿀 수 있습니다. */
+const SUP_TIME = { lunch:{s:12,e:13}, dinner:{s:18,e:19}, other:{s:14,e:16} };
+const SUP_FIXED = {lunch:true, dinner:true, other:false};
+const LANE_FS = {1:5.5, 2:5};
+
+/* ===== 한국 공휴일 =====
+   음력 기반(설날·부처님오신날·추석)은 해마다 달라서 아래 표로 관리합니다.
+   연도를 추가하려면 그 해 '당일' 날짜만 적으면 연휴·대체공휴일은 자동 계산됩니다. */
+const LUNAR_HOLIDAY = {
+  2025: {seol:'1-29',  buddha:'5-5',  chuseok:'10-6'},
+  2026: {seol:'2-17',  buddha:'5-24', chuseok:'9-25'},   // 2026 추석 9/24~26 (확인됨)
+  2027: {seol:'2-7',   buddha:'5-13', chuseok:'9-15'}    // 미확정 — 관보 확인 후 수정하세요
+};
+/* 양력 고정 공휴일. 제헌절(7/17) 공휴일 재지정은 확정되면 아래에 [7,17,'제헌절'] 추가 */
+const FIXED_HOLIDAY = [[1,1,'신정'],[3,1,'삼일절'],[5,5,'어린이날'],[6,6,'현충일'],
+                       [8,15,'광복절'],[10,3,'개천절'],[10,9,'한글날'],[12,25,'성탄절']];
+const SUB_SAT_SUN = ['삼일절','어린이날','광복절','개천절','한글날','부처님오신날','성탄절'];
+
+/* ========== 상태 ========== */
+const KEY = 'bowspa-schedule-v1';   // 로컬 캐시 (서버가 먼저, 로컬은 오프라인 대비)
+const API = '/api/schedule';
+let store = load();
+let restoreAfterPrint = null;
+
+const today = new Date();
+let ui = { y: today.getFullYear(), m: today.getMonth()+1, w: weekOfMonth(today), person: 'lee' };
+
+function load(){
+  let st;
+  try{ st = JSON.parse(localStorage.getItem(KEY)) || {}; }catch(e){ st = {}; }
+  if(st.__v === 3){                                     // 00:00 기준 → 04:00 기준으로 되돌림
+    Object.keys(st).forEach(k=>{
+      if(k === '__v') return;
+      const wk = st[k]; if(!wk || typeof wk !== 'object') return;
+      Object.keys(wk).forEach(pid=>{
+        const per = wk[pid]; if(!per || !per.work) return;
+        Object.keys(per.work).forEach(day=>{
+          const v = per.work[day];
+          if(Array.isArray(v)) per.work[day] = v.map(x=>{
+            let ns = x.s - 240; if(ns < 0) ns += 1440;      // 00~03시는 행 끝쪽으로
+            return {s:ns, e:ns + (x.e - x.s)};
+          });
+        });
+      });
+    });
+    st.__v = 4;
+  }
+  if(st.__v !== 4){                                     // 더 옛 버전(04:00 기준 30시간축) → 그대로 사용
+    Object.keys(st).forEach(k=>{
+      if(k === '__v') return;
+      const wk = st[k]; if(!wk || typeof wk !== 'object') return;
+      Object.keys(wk).forEach(pid=>{
+        const per = wk[pid]; if(!per || !per.work) return;
+        Object.keys(per.work).forEach(day=>{
+          const v = per.work[day];
+          if(Array.isArray(v)) per.work[day] = v.map(x=>({s:Math.min(x.s, AX_MIN-60), e:x.e}));
+        });
+      });
+    });
+    st.__v = 4;
+    try{ localStorage.setItem(KEY, JSON.stringify(st)); }catch(e){}   // 두 번 변환되지 않도록 즉시 기록
+  }
+  return st;
+}
+function saveLocal(){ try{ localStorage.setItem(KEY, JSON.stringify(store)); }catch(e){} }
+
+/* 저장은 두 단계입니다.
+   ① 로컬에 바로 써서 화면이 끊기지 않게 하고
+   ② 0.6초 동안 모아서 서버로 한 번만 올립니다 (드래그 중 수십 번 호출되므로) */
+let pushTimer = null, pushAll = false, syncState = '';
+function save(all){
+  saveLocal();
+  if(all) pushAll = true;
+  setSync('saving');
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushNow, 600);
+}
+async function pushNow(){
+  const week = wkey();
+  const targets = pushAll ? PEOPLE.map(p=>p.id) : [ui.person];
+  pushAll = false;
+  try{
+    for(const pid of targets){
+      const data = (store[week] && store[week][pid]) || blankPerson();
+      const r = await fetch(API, {method:'POST', headers:{'Content-Type':'application/json'},
+                                 body: JSON.stringify({week:week, person:pid, data:data})});
+      if(!r.ok) throw new Error('HTTP '+r.status);
+    }
+    setSync('ok');
+  }catch(e){ setSync('offline'); }
+}
+/* 주차를 열 때 서버 내용을 받아옵니다 (서버 값이 우선) */
+async function pullWeek(){
+  const week = wkey();
+  setSync('loading');
+  try{
+    const r = await fetch(API+'?week='+encodeURIComponent(week), {cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const remote = await r.json();
+    if(Object.keys(remote).length || store[week]) store[week] = Object.assign({}, store[week], remote);
+    saveLocal();
+    setSync('ok');
+    render();
+  }catch(e){ setSync('offline'); render(); }
+}
+function setSync(state){
+  syncState = state;
+  const el = document.getElementById('sync');
+  if(!el) return;
+  const txt = {loading:'불러오는 중…', saving:'저장 중…', ok:'저장됨', offline:'오프라인 (이 브라우저에만 저장)'};
+  el.textContent = txt[state] || '';
+  el.className = 'sync ' + state;
+}
+function wkey(){ return ui.y+'-'+ui.m+'-'+ui.w; }
+function blankPerson(){ return {work:{}, sup:{}}; }
+function data(pid){
+  const k = wkey();
+  if(!store[k]) store[k] = {};
+  if(!store[k][pid]) store[k][pid] = blankPerson();
+  return store[k][pid];
+}
+
+/* ========== 시간 헬퍼 (모든 근무는 04:00 기준 '분' 오프셋) ========== */
+const p2 = n => String(n).padStart(2,'0');
+const offFromHour = h => (((h < AX_START_H ? h+24 : h) - AX_START_H) * 60);   // 그날 04:00 기준 분
+const clockMin = off => (((AX_START_H*60 + off) % 1440) + 1440) % 1440;
+const fmt = off => { const m = clockMin(off); return p2(Math.floor(m/60))+':'+p2(m%60); };
+const fmtCell = off => { const m = clockMin(off); return m%60===0 ? p2(m/60) : p2(Math.floor(m/60))+':'+p2(m%60); };
+const durTxt = mins => { const h = Math.round(mins/6)/10; return (h % 1 === 0 ? h : h.toFixed(1))+'h'; };
+const clampOff = v => Math.max(0, Math.min(AX_MIN, v));
+const clampEnd = v => Math.max(0, Math.min(MAX_END, v));
+const snapMin = v => Math.round(v/SNAP)*SNAP;
+function bandOf(off){ const h = Math.floor(clockMin(off)/60); return (h>=4&&h<=11) ? 'am' : ((h>=12&&h<=20) ? 'pm' : 'night'); }
+
+/* 지원업무 목록 (구버전 단일 객체 형식은 배열로 자동 변환) */
+function supList(d, key, create){
+  let v = d.sup[key];
+  if(v === undefined){ if(!create) return []; v = d.sup[key] = []; }
+  else if(!Array.isArray(v)) v = d.sup[key] = [v];
+  return v;
+}
+/* 같은 날 점심(또는 저녁)이 여러 건이면 먼저 넣은 쪽이 12시, 다음이 13시 …  */
+function mealTimes(d, day){
+  const map = {};
+  ['lunch','dinner'].forEach(ty=>{
+    const base = SUP_TIME[ty].s, found = [];
+    SUP_ROWS.forEach(r=>{
+      const v = supList(d, r.id+'-'+day).find(x=>x.t===ty);
+      if(v) found.push({id:r.id, seq:v.seq||0});
+    });
+    found.sort((a,b)=>a.seq-b.seq);                    // 입력한 순서
+    found.forEach((o,i)=>{ const st=(base+i)%24; map[o.id+'-'+ty] = {s:st, e:(st+1)%24}; });
+  });
+  return map;
+}
+/* 점심·저녁은 위 배정표를 따르고, 기타는 저장된 시간을 씁니다 */
+function supTimeOf(rowId, v, mt){
+  if(SUP_FIXED[v.t]) return (mt && mt[rowId+'-'+v.t]) || SUP_TIME[v.t];
+  const def = SUP_TIME[v.t];
+  return {s:(v.s===undefined?def.s:v.s), e:(v.e===undefined?def.e:v.e)};
+}
+let seqCounter = Date.now();
+const nextSeq = () => ++seqCounter;
+
+/* 근무 목록 (구버전 {p,h} 형식은 자동 변환) */
+function shiftsOf(d, day){
+  let v = d.work[day];
+  if(!v) return [];
+  if(!Array.isArray(v)){
+    const s = offFromHour(v.h);
+    v = [{s:s, e:s+DEF_DUR}];
+    d.work[day] = v;
+  }
+  return v;
+}
+function dayMinutes(d, day){ return shiftsOf(d,day).reduce((a,x)=>a+(x.e-x.s), 0); }
+
+/* ========== 날짜 / 공휴일 ========== */
+function firstOffset(y,m){ return (new Date(y,m-1,1).getDay()+6)%7; } // 월=0
+function weekCount(y,m){ return Math.ceil((firstOffset(y,m)+new Date(y,m,0).getDate())/7); }
+function mondayOf(y,m,w){ return new Date(y, m-1, 1-firstOffset(y,m)+(w-1)*7); }
+function weekOfMonth(d){ return Math.floor((firstOffset(d.getFullYear(),d.getMonth()+1)+d.getDate()-1)/7)+1; }
+function dayDate(i){ const d = mondayOf(ui.y,ui.m,ui.w); d.setDate(d.getDate()+i); return d; }
+
+const holCache = {};
+function holidays(y){
+  if(holCache[y]) return holCache[y];
+  const key = d => (d.getMonth()+1)+'-'+d.getDate();
+  const map = {}, base = [];
+  const add = (d,name,sub)=>{ const k=key(d); if(!map[k]){ map[k]=name; base.push({d:new Date(d), sub:sub}); } };
+
+  FIXED_HOLIDAY.forEach(([m,dd,n]) => add(new Date(y,m-1,dd), n, SUB_SAT_SUN.includes(n)?[0,6]:null));
+
+  const L = LUNAR_HOLIDAY[y];
+  if(L){
+    const mk = v => { const [m,dd]=v.split('-').map(Number); return new Date(y,m-1,dd); };
+    add(mk(L.buddha), '부처님오신날', [0,6]);
+    [['seol','설날','설연휴'],['chuseok','추석','추석연휴']].forEach(([k,main,side])=>{
+      const c = mk(L[k]);
+      const prev = new Date(c); prev.setDate(c.getDate()-1);
+      const next = new Date(c); next.setDate(c.getDate()+1);
+      add(prev, side, [0]); add(c, main, [0]); add(next, side, [0]);   // 연휴는 일요일만 대체
+    });
+  }
+  base.forEach(b=>{
+    if(!b.sub || !b.sub.includes(b.d.getDay())) return;
+    const t = new Date(b.d);
+    do { t.setDate(t.getDate()+1); } while(t.getDay()===0 || t.getDay()===6 || map[key(t)]);
+    map[key(t)] = '대체휴일';
+  });
+  holCache[y] = map;
+  return map;
+}
+function holidayName(d){ return holidays(d.getFullYear())[(d.getMonth()+1)+'-'+d.getDate()] || ''; }
+
+/* ========== 렌더 ========== */
+function render(){ document.getElementById('sheet').innerHTML = sheetHTML(ui.person); }
+let rafId = null;
+function renderSoon(){ if(rafId) return; rafId = requestAnimationFrame(()=>{ rafId=null; render(); }); }
+
+function sheetHTML(pid){
+  const d = (store[wkey()] && store[wkey()][pid]) || blankPerson();
+  const mon = mondayOf(ui.y,ui.m,ui.w), sun = dayDate(6);
+  const range = (mon.getMonth()+1)+'/'+mon.getDate()+'('+DAYS[0]+') ~ '+(sun.getMonth()+1)+'/'+sun.getDate()+'('+DAYS[6]+')';
+
+  let h = '<div class="hd">';
+  h += '<div><div class="ttl">주간 근무 스케줄표</div><div class="sub">타임라인 04:00 ~ 익일 03:00 · 지원업무 점심 12시 / 저녁 18시부터 1시간씩</div></div>';
+  h += '<div class="names">'+PEOPLE.map(p=>
+        '<button class="ntab '+(p.id===pid?'on':'')+'" data-act="person" data-id="'+p.id+'">'+p.name+'<span class="pos">'+p.pos+'</span></button>').join('')+'</div>';
+  h += '<div class="wk"><div>'
+     +   '<select data-act="y">'+yearOpts()+'</select> '
+     +   '<select data-act="m">'+monthOpts()+'</select> '
+     +   '<select data-act="w">'+weekOpts()+'</select>'
+     + '</div><div class="range">'+range+'</div></div>';
+  h += '</div>';
+
+  h += '<div class="sec">근 무 시 간</div>';
+  h += '<table class="work"><colgroup>'
+     + '<col style="width:24mm"><col style="width:10.5mm"><col style="width:10.5mm"><col style="width:10.5mm"><col><col style="width:12mm">'
+     + '</colgroup><thead><tr>'
+     + '<th>요일 / 날짜</th><th>오전</th><th>오후</th><th>야간</th><th style="padding:0">'+axisHeader()+'</th><th>근무</th></tr></thead><tbody>';
+
+  let total = 0, workDays = 0;
+  for(let i=0;i<7;i++){
+    const dt = dayDate(i), hol = holidayName(dt);
+    const cls = (hol||i===6) ? 'sun' : (i===5?'sat':'');
+    const shifts = shiftsOf(d, i);
+    const mins = dayMinutes(d, i);
+    if(mins) { total += mins; workDays++; }
+
+    h += '<tr>';
+    h += '<td class="dcell '+cls+'">'+DAYS[i]+'<span class="dt">'+(dt.getMonth()+1)+'/'+dt.getDate()
+       + (hol?' <span class="hol">('+hol+')</span>':'')+'</span></td>';
+    PERIODS.forEach(p=>{
+      const inBand = shifts.filter(x=>bandOf(x.s)===p.id).sort((a,b)=>a.s-b.s);
+      const on = inBand.length>0;
+      const txt = on ? fmtCell(inBand[0].s) : '';
+      h += '<td class="pcell '+p.id+(on?' on':'')+'" data-act="cycle" data-d="'+i+'" data-p="'+p.id+'">'
+         + (on ? '<span class="cap">출근</span><span class="hr'+(txt.length>2?' sm':'')+'">'+txt+'</span>'
+                 + (inBand.length>1?'<span class="more">+'+(inBand.length-1)+'</span>':'')
+               : '<span class="dot">·</span>')
+         + '</td>';
+    });
+    h += '<td class="tl" data-d="'+i+'">'+timelineHTML(i, d)+'</td>';
+    h += '<td class="hsum'+(mins?'':' z')+'">'+(mins?durTxt(mins):'-')+'</td>';
+    h += '</tr>';
+  }
+  h += '</tbody><tfoot><tr><td colspan="4">주간 합계</td>'
+     + '<td style="text-align:right;padding-right:2mm">근무일 '+workDays+'일</td><td>'+(total?durTxt(total):'-')+'</td></tr></tfoot></table>';
+
+  h += '<div class="sec">지 원 업 무</div>';
+  h += '<table class="sup"><colgroup><col style="width:24mm">'+DAYS.map(()=>'<col>').join('')+'</colgroup>';
+  h += '<thead><tr><th>구분</th>'+DAYS.map((x,i)=>{
+        const dt=dayDate(i), hol=holidayName(dt);
+        const col = (hol||i===6) ? '#c1121f' : (i===5?'#1d4ed8':'');
+        return '<th'+(col?' style="color:'+col+'"':'')+'>'+x+' <span style="font-weight:600'+(col?'':';color:#666')+'">'
+             + (dt.getMonth()+1)+'/'+dt.getDate()+'</span>'
+             + (hol?' <span class="hol">('+hol+')</span>':'')+'</th>';
+      }).join('')+'</tr></thead><tbody>';
+  SUP_ROWS.forEach(r=>{
+    h += '<tr><td class="rl">'+r.label+'</td>';
+    for(let i=0;i<7;i++) h += '<td class="scell">'+supCell(r.id, i, supList(d, r.id+'-'+i), mealTimes(d, i))+'</td>';
+    h += '</tr>';
+  });
+  h += '</tbody></table>';
+
+  h += '<div class="ft"><div class="lg">'
+     + '<span><i style="background:var(--am)"></i>오전</span>'
+     + '<span><i style="background:var(--pm)"></i>오후</span>'
+     + '<span><i style="background:var(--ni)"></i>야간</span>'
+     + '<span class="div">│</span>'
+     + '<span><i style="background:var(--lunch)"></i>점심</span>'
+     + '<span><i style="background:var(--dinner)"></i>저녁</span>'
+     + '<span><i style="background:var(--other)"></i>기타</span>'
+     + '</div></div>';
+  return h;
+}
+
+function yearOpts(){ let s=''; for(let y=ui.y-1;y<=ui.y+1;y++) s+='<option '+(y===ui.y?'selected':'')+' value="'+y+'">'+y+'년</option>'; return s; }
+function monthOpts(){ let s=''; for(let m=1;m<=12;m++) s+='<option '+(m===ui.m?'selected':'')+' value="'+m+'">'+m+'월</option>'; return s; }
+function weekOpts(){ let s=''; const n=weekCount(ui.y,ui.m); for(let w=1;w<=n;w++) s+='<option '+(w===ui.w?'selected':'')+' value="'+w+'">'+w+'주차</option>'; return s; }
+
+/* ---------- 타임라인 ---------- */
+const pct = min => (min/AX_MIN*100);
+function axisHeader(){
+  let s='<div class="axis">';
+  for(let i=0;i<AX_HOURS;i++){
+    const h = (AX_START_H+i)%24;
+    s+='<div class="'+(h%6===0?'k ':'')+(h<AX_START_H?'nd':'')+'">'+p2(h)+'</div>';
+  }
+  return s+'</div>';
+}
+function trackHTML(){
+  return '<div class="track"></div>'
+       + '<div class="night-zone" style="left:'+pct(MIDNIGHT)+'%;right:0"></div>'
+       + '<div class="mark" style="left:'+pct(offFromHour(12))+'%"></div>'
+       + '<div class="mark mid" style="left:'+pct(MIDNIGHT)+'%"></div>';
+}
+
+/* 이 행에 보일 근무 = 그날 근무 + 전날에서 넘어온 부분 */
+function visibleShifts(d, day){
+  const out = [];
+  shiftsOf(d, day).forEach((sh,i)=>{
+    out.push({s:sh.s, e:Math.min(sh.e, AX_MIN), os:sh.s, oe:sh.e, idx:i, spill:false});
+  });
+  if(day > 0){
+    shiftsOf(d, day-1).forEach(sh=>{
+      if(sh.e > AX_MIN) out.push({s:0, e:Math.min(sh.e-AX_MIN, AX_MIN), os:sh.s, oe:sh.e, idx:-1, spill:true});
+    });
+  }
+  return out;
+}
+
+function timelineHTML(day, d){
+  const vis = visibleShifts(d, day);
+  const sup = supSegments(day, d);
+  let out = trackHTML();
+
+  const inside = vis.map(()=>[]);
+  const outside = [];
+  sup.segs.forEach(m=>{
+    let rest = [[m.ps, m.pe]];
+    vis.forEach((sh,si)=>{
+      const cs = Math.max(m.ps, sh.s), ce = Math.min(m.pe, sh.e);
+      if(ce > cs) inside[si].push({m:m, a:cs, b:ce});
+      rest = rest.flatMap(([a,b])=>{
+        const r=[];
+        if(a < sh.s) r.push([a, Math.min(b, sh.s)]);
+        if(b > sh.e) r.push([Math.max(a, sh.e), b]);
+        return r.filter(([x,y]) => y-x > 0);
+      });
+    });
+    rest.forEach(([a,b]) => outside.push({m:m, a:a, b:b}));
+  });
+
+  vis.forEach((sh,si) => { out += barHTML(sh, inside[si], sup.n); });
+  /* 일요일은 이어붙일 다음 행이 없으므로 잘림 표시 */
+  if(day === 6 && shiftsOf(d,day).some(sh => sh.e > AX_MIN)) out += '<div class="ov">▶</div>';
+  outside.forEach(o => { out += outHTML(o.m, o.a, o.b, sup.n); });
+  return out;
+}
+
+function barHTML(sh, inside, n){
+  const s = Math.max(0, sh.s), e = Math.min(AX_MIN, sh.e);
+  if(e <= s) return '';
+  const span = e - s, fs = LANE_FS[n] || 0;
+  let inner = '';
+  inside.forEach(b=>{
+    const a = Math.max(b.a, s), c = Math.min(b.b, e);
+    if(c <= a) return;
+    inner += '<div class="sin '+b.m.t+'" style="left:'+((a-s)/span*100)+'%;width:'+((c-a)/span*100)+'%;'
+          +  'top:'+(b.m.lane*100/n)+'%;height:'+(100/n)+'%;'+(fs?'font-size:'+fs+'pt':'')+'">'
+          +  segLabel(b.m, (c-a)/60, fs)+'</div>';
+  });
+  const band = bandOf(sh.os), wide = span >= 4*60;
+  const sband = inner ? '<div class="sband">'+inner+'</div>' : '';
+
+  if(sh.spill){   /* 전날에서 넘어온 부분 */
+    return '<div class="bar spill '+band+'" style="left:0;width:'+pct(span)+'%">'
+         +   '<span>◀ 전일</span>'+(wide?'<span class="bd">이어짐</span>':'')+'<span>'+fmt(sh.oe)+'</span>'
+         +   sband + '</div>';
+  }
+  const over = sh.oe > AX_MIN;
+  return '<div class="bar '+band+'" data-i="'+sh.idx+'" style="left:'+pct(s)+'%;width:'+pct(span)+'%">'
+       +   '<span>'+fmt(sh.os)+'</span>'
+       +   (wide ? '<span class="bd">'+durTxt(sh.oe-sh.os)+'</span>' : '')
+       +   '<span>'+fmt(sh.oe)+(over?' ▶':'')+'</span>'
+       +   sband
+       +   '<div class="hs h-s"></div><div class="hs h-e"></div>'
+       + '</div>';
+}
+
+function outHTML(m, a, b, n){
+  const s = Math.max(0, a), e = Math.min(AX_MIN, b);
+  if(e - s < 30) return '';
+  const fs = LANE_FS[n] || 0;
+  return '<div class="sout '+m.t+'" style="left:'+pct(s)+'%;width:'+pct(e-s)+'%;'
+       + 'top:calc(5.4mm + '+(m.lane*4.4/n)+'mm);height:'+(4.4/n)+'mm;'+(fs?'font-size:'+fs+'pt':'')+'">'
+       + segLabel(m, (e-s)/60, fs)+'</div>';
+}
+
+/* 그날 지원업무 + 전날에서 넘어온 지원업무 */
+function supSegments(day, d){
+  const items = [];
+  const collect = (srcDay, shift) => {
+    if(srcDay < 0) return;
+    const mt = mealTimes(d, srcDay);
+    SUP_ROWS.forEach(r=>{
+      supList(d, r.id+'-'+srcDay).forEach(v=>{
+        const tm = supTimeOf(r.id, v, mt);
+        let ps = offFromHour(tm.s), pe = offFromHour(tm.e);
+        if(pe <= ps) pe += 1440;
+        const a = Math.max(ps - shift, 0), b = Math.min(pe - shift, AX_MIN);
+        if(b > a) items.push({row:r, t:v.t, ps:a, pe:b});
+      });
+    });
+  };
+  collect(day, 0);
+  collect(day-1, AX_MIN);
+
+  const merged = [];
+  items.forEach(it=>{
+    const m = merged.find(x=>x.t===it.t && x.ps===it.ps && x.pe===it.pe);
+    if(m) m.rows.push(it.row); else merged.push({t:it.t, ps:it.ps, pe:it.pe, rows:[it.row]});
+  });
+  const lanes = [];
+  merged.forEach(m=>{
+    let li = lanes.findIndex(l => l.every(x => m.pe <= x.ps || m.ps >= x.pe));
+    if(li < 0){ lanes.push([m]); li = lanes.length-1; } else lanes[li].push(m);
+    m.lane = li;
+  });
+  return {segs:merged, n:Math.max(1, lanes.length)};
+}
+
+/* 막대 안에는 구역 이름만 (리셉션 / 스낵 / 기타).
+   점심·저녁은 그려진 시각으로 구분되므로 업무 종류는 넣지 않습니다. */
+function segLabel(m, durHours, fs){
+  if(!fs) return '';
+  if(fs < 5.5) return m.rows.map(r=>r.s).join('');            // 2단으로 눌릴 때 : 리 / 리스
+  if(m.rows.length > 1) return m.rows.map(r=>r.s).join('·');  // 여러 구역이 합쳐진 경우 : 리·스
+  return durHours >= 1 ? m.rows[0].label : m.rows[0].s;       // 리셉션 / 스낵 / 기타
+}
+
+/* ---------- 지원업무 셀 (3칸 토글) ---------- */
+function supCell(row, day, list, mt){
+  const compact = list.length > 1;                 // 여러 건이면 칸이 좁아지므로 짧게 표기
+  const hh = x => compact ? String(x) : p2(x)+':00';
+  return '<div class="split">' + SUP_TYPES.map(t=>{
+    const v = list.find(x=>x.t===t.id);
+    let inner = t.label;
+    if(v){
+      const tm = supTimeOf(row, v, mt);
+      if(t.id==='other'){
+        inner = '<div class="tag">기타</div><div class="tm">'
+              + '<b data-act="supt" data-r="'+row+'" data-d="'+day+'" data-f="s">'+hh(tm.s)+'</b>~'
+              + '<b data-act="supt" data-r="'+row+'" data-d="'+day+'" data-f="e">'+hh(tm.e)+'</b>'
+              + (compact?'<span class="u">시</span>':'')+'</div>';
+      }else{
+        inner = t.label + '<div class="tm2">'
+              + (compact ? tm.s+'시' : p2(tm.s)+':00~'+p2(tm.e)+':00') + '</div>';
+      }
+    }
+    return '<div class="slot '+t.id+(v?' on':'')+'" data-act="sup" data-r="'+row+'" data-d="'+day+'" data-t="'+t.id+'">'
+         + inner + '</div>';
+  }).join('') + '</div>';
+}
+
+/* ========== 드래그 : 근무 생성 / 크기조절 / 이동 ========== */
+let drag = null, suppressClick = false;
+
+/* 포인터 → 분. 행 오른쪽 밖으로 끌면 다음날 구간까지 값이 이어집니다. */
+function offAt(rect, clientX){ return clampEnd(snapMin((clientX-rect.left)/rect.width*AX_MIN)); }
+
+document.addEventListener('mousedown', e=>{
+  if(e.button !== 0) return;
+  const tl = e.target.closest('.tl');
+  if(!tl) return;
+  e.preventDefault();
+  const day = +tl.dataset.d, rect = tl.getBoundingClientRect();
+  const bar = e.target.closest('.bar');
+  const arr = shiftsOf(data(ui.person), day);
+  if(bar){
+    const idx = +bar.dataset.i;
+    const mode = e.target.classList.contains('h-s') ? 'rs'
+               : e.target.classList.contains('h-e') ? 're' : 'mv';
+    drag = {day, idx, mode, rect, x0:offAt(rect,e.clientX), orig:Object.assign({},arr[idx]), moved:false};
+  }else{
+    drag = {day, idx:-1, mode:'new', rect, x0:offAt(rect,e.clientX), moved:false};
+  }
+  document.body.classList.add('dragging');
+});
+
+document.addEventListener('mousemove', e=>{
+  if(!drag) return;
+  const x = offAt(drag.rect, e.clientX);
+  const d = data(ui.person), arr = shiftsOf(d, drag.day) ;
+  if(drag.mode === 'new'){
+    if(Math.abs(x - drag.x0) < SNAP) return;
+    if(drag.idx < 0){
+      if(!d.work[drag.day]) d.work[drag.day] = [];
+      d.work[drag.day].push({s:clampOff(drag.x0), e:clampOff(drag.x0)+SNAP});
+      drag.idx = d.work[drag.day].length-1;
+    }
+    const a = clampOff(Math.min(drag.x0, x)), b = clampEnd(Math.max(drag.x0, x));
+    d.work[drag.day][drag.idx] = {s:a, e:Math.max(b, a+SNAP)};
+  }else{
+    const dx = x - drag.x0, o = drag.orig, cur = arr[drag.idx];
+    if(!cur) return;
+    if(drag.mode === 're')      arr[drag.idx] = {s:o.s, e:clampEnd(Math.max(o.s+MIN_DUR, o.e+dx))};
+    else if(drag.mode === 'rs') arr[drag.idx] = {s:clampOff(Math.min(o.e-MIN_DUR, o.s+dx)), e:o.e};
+    else {
+      const len = o.e - o.s;
+      const ns = Math.max(0, Math.min(AX_MIN-SNAP, o.s+dx));
+      arr[drag.idx] = {s:ns, e:Math.min(MAX_END, ns+len)};
+    }
+  }
+  drag.moved = true;
+  renderSoon();
+});
+
+document.addEventListener('mouseup', ()=>{
+  if(!drag) return;
+  const d = data(ui.person), day = drag.day, moved = drag.moved;
+  const arr = d.work[day];
+  if(Array.isArray(arr)){
+    /* 최소 길이 보정 후 정렬, 빈 날은 제거 */
+    arr.forEach(x=>{ if(x.e - x.s < MIN_DUR) x.e = Math.min(MAX_END, x.s+MIN_DUR); });
+    arr.sort((a,b)=>a.s-b.s);
+    if(!arr.length) delete d.work[day];
+  }
+  drag = null;
+  document.body.classList.remove('dragging');
+  suppressClick = moved;
+  if(moved){ save(); render(); }
+});
+
+document.addEventListener('dblclick', e=>{
+  const bar = e.target.closest('.bar'); if(!bar) return;
+  const tl = bar.closest('.tl'); if(!tl) return;
+  const d = data(ui.person), day = +tl.dataset.d, arr = shiftsOf(d, day);
+  arr.splice(+bar.dataset.i, 1);
+  if(!arr.length) delete d.work[day];
+  save(); render();
+});
+
+/* ========== 클릭 이벤트 ========== */
+document.addEventListener('click', e=>{
+  if(suppressClick){ suppressClick = false; return; }
+  const t = e.target.closest('[data-act]');
+  if(!t) return;
+  const act = t.dataset.act;
+
+  if(act==='person'){ ui.person = t.dataset.id; render(); return; }
+
+  /* 구간 셀 클릭 : 그 구간의 근무를 만들거나 출근시간 롤링, 한 바퀴 돌면 삭제 */
+  if(act==='cycle'){
+    const d = data(ui.person), day = +t.dataset.d, band = t.dataset.p;
+    if(!d.work[day] || !Array.isArray(d.work[day])) shiftsOf(d, day);
+    const arr = d.work[day] || (d.work[day] = []);
+    const seq = SEQ[band];
+    const idx = arr.map((x,i)=>({x,i})).filter(o=>bandOf(o.x.s)===band).sort((a,b)=>a.x.s-b.x.s).map(o=>o.i)[0];
+    if(idx === undefined){
+      const s = offFromHour(seq[0]);
+      arr.push({s:s, e:s+DEF_DUR});
+    }else{
+      const cur = arr[idx], len = cur.e - cur.s;
+      const k = seq.indexOf(Math.floor(clockMin(cur.s)/60)) + 1;
+      if(k >= seq.length) arr.splice(idx,1);
+      else { const ns = offFromHour(seq[k]); arr[idx] = {s:ns, e:ns+len}; }
+    }
+    arr.sort((a,b)=>a.s-b.s);
+    if(!arr.length) delete d.work[day];
+    save(); render(); return;
+  }
+
+  /* 칸 토글 : 한 셀에 점심·저녁·기타를 각각 넣고 뺄 수 있습니다 */
+  if(act==='sup'){
+    const d = data(ui.person), k = t.dataset.r+'-'+t.dataset.d, ty = t.dataset.t;
+    const list = supList(d, k, true);
+    const i = list.findIndex(x=>x.t===ty);
+    if(i >= 0) list.splice(i,1);
+    else list.push(ty==='other' ? {t:'other', s:SUP_TIME.other.s, e:SUP_TIME.other.e} : {t:ty, seq:nextSeq()});
+    if(!list.length) delete d.sup[k];
+    save(); render(); return;
+  }
+  /* 기타 시간 : 숫자 클릭 +1시간, Shift·Alt·우클릭 −1시간 */
+  if(act==='supt'){ rollOther(t, (e.shiftKey||e.altKey) ? -1 : 1); return; }
+});
+
+function rollOther(t, step){
+  const d = data(ui.person), k = t.dataset.r+'-'+t.dataset.d;
+  const v = supList(d, k).find(x=>x.t==='other');
+  if(!v) return;
+  const tm = supTimeOf(t.dataset.r, v, null);
+  v.s = tm.s; v.e = tm.e;
+  v[t.dataset.f] = ((v[t.dataset.f] + step)%24+24)%24;
+  save(); render();
+}
+document.addEventListener('contextmenu', e=>{
+  const t = e.target.closest('[data-act="supt"]');
+  if(!t) return;
+  e.preventDefault(); rollOther(t, -1);
+});
+
+document.addEventListener('change', e=>{
+  const t = e.target.closest('[data-act]');
+  if(!t) return;
+  if(t.dataset.act==='y'){ ui.y = +t.value; ui.w = Math.min(ui.w, weekCount(ui.y,ui.m)); }
+  if(t.dataset.act==='m'){ ui.m = +t.value; ui.w = Math.min(ui.w, weekCount(ui.y,ui.m)); }
+  if(t.dataset.act==='w'){ ui.w = +t.value; }
+  render();
+  pullWeek();                                   // 바뀐 주차 내용을 서버에서 가져옵니다
+});
+
+/* ========== 초기화 / 인쇄 ========== */
+function resetPerson(){
+  const p = PEOPLE.find(x=>x.id===ui.person);
+  if(!confirm(p.name+' '+p.pos+'의 이번 주 입력을 모두 지울까요?')) return;
+  if(store[wkey()]) store[wkey()][ui.person] = blankPerson();
+  save(); render();
+}
+function resetWeek(){
+  if(!confirm('이번 주 3명 전체 입력을 모두 지울까요?')) return;
+  store[wkey()] = {};
+  PEOPLE.forEach(p=>{ store[wkey()][p.id] = blankPerson(); });
+  save(true); render();
+}
+const baseTitle = document.title;
+function fileName(pid){
+  const p = PEOPLE.find(x=>x.id===pid);
+  return ui.y+'-'+p2(ui.m)+'월_'+ui.w+'주차_'+(p ? p.name+'_'+p.pos : '전체');
+}
+function printOne(){ document.body.classList.remove('printall'); document.title = fileName(ui.person); window.print(); }
+function printAll(){
+  document.getElementById('printAll').innerHTML = PEOPLE.map(p=>'<div class="sheet">'+sheetHTML(p.id)+'</div>').join('');
+  document.body.classList.add('printall');
+  document.title = ui.y+'-'+p2(ui.m)+'월_'+ui.w+'주차_전체';
+  window.print();
+}
+/* PDF 저장 : 세로 A4 용지에 내용을 90도 회전해서 담습니다 */
+function printPDF(){
+  const MM = 96/25.4;
+  const H = Math.ceil(document.querySelector('#live .sheet').offsetHeight / MM) + 1;   // 회전 후 가로폭(mm)
+  const st = document.createElement('style');
+  st.id = 'rotstyle';
+  st.textContent =
+      '@page{size:A4 portrait;margin:5mm}'
+    + '@media print{'
+    +   'body.printall #printAll .rotwrap{position:relative;width:'+H+'mm;height:283mm;overflow:hidden;page-break-after:always}'
+    +   'body.printall #printAll .rotwrap:last-child{page-break-after:auto}'
+    +   'body.printall #printAll .sheet{position:absolute;top:0;left:0;width:283mm;margin:0;box-shadow:none;'
+    +     'transform-origin:top left;transform:translateX('+H+'mm) rotate(90deg)}'
+    + '}';
+  document.head.appendChild(st);
+  document.getElementById('printAll').innerHTML =
+    '<div class="rotwrap"><div class="sheet">'+sheetHTML(ui.person)+'</div></div>';
+  document.body.classList.add('printall');
+  document.title = fileName(ui.person);
+  window.print();
+}
+
+function printBlank(){
+  restoreAfterPrint = JSON.stringify(store);
+  store = {};
+  document.body.classList.remove('printall');
+  render();
+  document.title = ui.y+'-'+p2(ui.m)+'월_'+ui.w+'주차_빈양식';
+  window.print();
+}
+function endPrint(){
+  document.title = baseTitle;
+  const rs = document.getElementById('rotstyle');
+  if(rs) rs.remove();
+  document.body.classList.remove('printall');
+  document.getElementById('printAll').innerHTML = '';
+  if(restoreAfterPrint !== null){ store = JSON.parse(restoreAfterPrint); restoreAfterPrint = null; render(); }
+}
+window.addEventListener('afterprint', endPrint);
+window.addEventListener('focus', endPrint);
+/* 빈 양식 인쇄 중에는 저장하지 않으므로, 최악의 경우 새로고침만 해도 입력이 복구됩니다. */
+
+document.getElementById('btnAll').textContent = '🖨 전체 '+PEOPLE.length+'명';
+render();
+pullWeek();
+</script>
+</body>
+</html>

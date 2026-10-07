@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/schedule",
-      "destination": "/index.html"
+      "destination": "/schedule.html"
     },
     {
       "source": "/spa-guard",
@@ -17,8 +17,21 @@
   "redirects": [
     {
       "source": "/",
-      "destination": "/schedule",
-      "statusCode": 308
+      "has": [{ "type": "query", "key": "nfc" }],
+      "destination": "/spa-guard",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "report" }],
+      "destination": "/spa-guard",
+      "permanent": false
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "query", "key": "admin" }],
+      "destination": "/spa-guard",
+      "permanent": false
     }
   ]
 }
